@@ -129,10 +129,16 @@ def test_pr_context_discovery() -> bool:
     utils.log("Running PR context discovery tests...")
     
     import sys
+    import os
     sys.path.insert(0, str(utils.ROOT / "scripts"))
     from post_comment import discover_pr_context
     
     try:
+        original_env = {
+            "GITHUB_EVENT_PATH": os.environ.pop("GITHUB_EVENT_PATH", None),
+            "GITHUB_REPOSITORY": os.environ.pop("GITHUB_REPOSITORY", None),
+        }
+
         # Without GitHub environment, should return None
         repo, pr = discover_pr_context()
         assert repo is None and pr is None, "Should return None outside CI"
@@ -142,6 +148,10 @@ def test_pr_context_discovery() -> bool:
     except (AssertionError, ImportError) as exc:
         utils.log(f"  ✗ PR context test failed: {exc}")
         return False
+    finally:
+        for key, value in original_env.items():
+            if value is not None:
+                os.environ[key] = value
 
 
 def main() -> int:
