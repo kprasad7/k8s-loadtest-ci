@@ -54,7 +54,19 @@ def main() -> int:
         utils.log("Not running in the context of a pull request; skipping comment")
         return 0
 
-    body = markdown_path.read_text()
+    # Combine load test and resource metrics
+    body_parts = [markdown_path.read_text()]
+    
+    # Add resource metrics if available
+    resource_state = state.get("resource_metrics")
+    if resource_state:
+        resource_md_path = Path(resource_state.get("markdown", ""))
+        if resource_md_path.exists():
+            body_parts.append("\n" + resource_md_path.read_text())
+            utils.log("Including resource utilization metrics in comment")
+    
+    body = "\n\n".join(body_parts)
+    
     utils.log(f"Posting load-test comment to {repo_name} PR #{pr_number}")
     gh = Github(token)
     repo = gh.get_repo(repo_name)

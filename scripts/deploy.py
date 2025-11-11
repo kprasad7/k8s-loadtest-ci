@@ -20,6 +20,7 @@ MANIFEST_FILES = [
     Path("manifests/foo-deployment.yaml"),
     Path("manifests/bar-deployment.yaml"),
     Path("manifests/ingress.yaml"),
+    Path("manifests/prometheus.yaml"),
 ]
 
 

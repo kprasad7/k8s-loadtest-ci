@@ -56,6 +56,23 @@ def wait_for_deployments(env, namespace: str, timeout: str) -> None:
         )
 
 
+def wait_for_prometheus(env, timeout: str) -> None:
+    utils.log("Waiting for Prometheus deployment")
+    utils.run_cmd(
+        (
+            "kubectl",
+            "rollout",
+            "status",
+            "deployment/prometheus",
+            "--namespace",
+            "monitoring",
+            f"--timeout={timeout}",
+        ),
+        env=env,
+    )
+    utils.log("Prometheus is ready")
+
+
 def main() -> int:
     args = parse_args()
     state = utils.load_state()
@@ -65,6 +82,7 @@ def main() -> int:
     wait_for_nodes(env, args.timeout)
     wait_for_ingress_controller(env, args.timeout)
     wait_for_deployments(env, args.namespace, args.timeout)
+    wait_for_prometheus(env, args.timeout)
     return 0
 
 

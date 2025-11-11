@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  security-events: write
 
 jobs:
   load-test:
@@ -41,6 +42,12 @@ jobs:
           chmod +x kubectl
           sudo mv kubectl /usr/local/bin/kubectl
 
+      - name: Validate environment
+        run: python scripts/validate.py
+
+      - name: Run tests
+        run: python scripts/test.py
+
       - name: Create KinD cluster
         run: python scripts/create_cluster.py
 
@@ -53,10 +60,29 @@ jobs:
       - name: Run load test
         run: python scripts/load_test.py
 
+      - name: Monitor resource utilization
+        run: python scripts/monitor_resources.py --duration 30 --interval 5
+
       - name: Post PR comment
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/post_comment.py
+
+      - name: Security scan with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy results to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
 
       - name: Delete KinD cluster
         if: always()
