@@ -1,0 +1,52 @@
+# Commit Message Template
+
+## Format
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+## Types
+- **feat**: New feature
+- **fix**: Bug fix
+- **docs**: Documentation only
+- **style**: Code style (formatting, missing semi-colons, etc.)
+- **refactor**: Code change that neither fixes a bug nor adds a feature
+- **test**: Adding missing tests
+- **chore**: Changes to build process or auxiliary tools
+
+## Examples
+
+### Initial implementation
+```
+feat(ci): implement KinD-based load testing pipeline
+
+- Add multi-node KinD cluster provisioning with ingress support
+- Deploy echo services (foo/bar) with host-based routing
+- Implement HTTP load test with percentile metrics (p90, p95, p99)
+- Automate PR comments with load test results
+- Add health checks with retry logic
+
+Closes #1
+```
+
+### Bug fix
+```
+fix(load-test): correct success rate calculation
+
+Previously counted only HTTP 200 responses; now validates
+response body contains expected text ("foo" or "bar").
+
+Fixes #42
+```
+
+### Documentation
+```
+docs(readme): add troubleshooting section
+
+Addresses common issues with localhost DNS resolution
+and Docker socket permissions.
+```

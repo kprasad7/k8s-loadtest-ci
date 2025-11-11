@@ -191,17 +191,25 @@ cython_debug/
 # Ruff stuff:
 .ruff_cache/
 
-# PyPI configuration file
-.pypirc
-
-# Cursor
-#  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
-#  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
-#  refer to https://docs.cursor.com/context/ignore-files
-.cursorignore
-.cursorindexingignore
-
 # Marimo
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+# Local kubeconfig and kind config
+kubeconfig
+kind-config.yaml
+
+# Python
+__pycache__/
+*.pyc
+.env
+
+# Artifacts
+artifacts/
+results.json
+
+# Editor / OS
+.vscode/
+.DS_Store
