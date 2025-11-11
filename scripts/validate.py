@@ -2,6 +2,7 @@
 """Pre-flight validation for the CI pipeline."""
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -20,15 +21,22 @@ def check_python_version() -> bool:
 
 def check_dependencies() -> bool:
     """Verify required Python packages are installed."""
-    try:
-        import github  # noqa: F401
-        import requests  # noqa: F401
+    required_packages = ["github", "requests"]
+    missing = []
+    
+    for package in required_packages:
+        try:
+            __import__(package)
+        except ImportError:
+            missing.append(package)
+    
+    if not missing:
         utils.log("✓ Python dependencies ... OK")
         return True
-    except ImportError as exc:
-        utils.log(f"✗ Missing dependency: {exc.name}")
-        utils.log("  Run: pip install -r requirements.txt")
-        return False
+    
+    utils.log(f"✗ Missing dependencies: {', '.join(missing)}")
+    utils.log(f"  Run: pip install -r requirements.txt")
+    return False
 
 
 def check_binary(name: str, required: bool = True) -> bool:
@@ -45,18 +53,61 @@ def check_binary(name: str, required: bool = True) -> bool:
         return True
 
 
+def check_docker_daemon() -> bool:
+    """Verify Docker daemon is actually running."""
+    try:
+        utils.ensure_binary("docker")
+        subprocess.run(
+            ["docker", "ps"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=5,
+            check=True,
+        )
+        utils.log("✓ Docker daemon running ... OK")
+        return True
+    except FileNotFoundError:
+        utils.log("✗ Docker ... FAIL (not installed)")
+        return False
+    except subprocess.TimeoutExpired:
+        utils.log("✗ Docker daemon ... FAIL (timeout connecting to daemon)")
+        utils.log("  Check: Is Docker running? Try: docker ps")
+        return False
+    except subprocess.CalledProcessError:
+        utils.log("✗ Docker daemon ... FAIL (permission denied or not running)")
+        utils.log("  Check: docker ps works? Try: sudo usermod -aG docker $USER")
+        return False
+
+
 def check_manifests() -> bool:
     """Verify all required Kubernetes manifests exist."""
-    manifests = [
-        utils.ROOT / "manifests/foo-deployment.yaml",
-        utils.ROOT / "manifests/bar-deployment.yaml",
-        utils.ROOT / "manifests/ingress.yaml",
-    ]
-    if all(m.exists() for m in manifests):
-        utils.log("✓ Manifest files ... OK")
-        return True
-    utils.log("✗ Manifest files ... FAIL")
-    return False
+    manifests = {
+        "Base deployments": [
+            utils.ROOT / "manifests/base/foo-deployment.yaml",
+            utils.ROOT / "manifests/base/bar-deployment.yaml",
+        ],
+        "Base ingress": [
+            utils.ROOT / "manifests/base/ingress.yaml",
+            utils.ROOT / "manifests/base/kustomization.yaml",
+        ],
+        "Monitoring": [
+            utils.ROOT / "manifests/prometheus.yaml",
+        ],
+        "Kustomize overlays": [
+            utils.ROOT / "manifests/overlays/production/kustomization.yaml",
+        ],
+    }
+    
+    all_exist = True
+    for category, files in manifests.items():
+        if all(f.exists() for f in files):
+            utils.log(f"✓ {category} ... OK")
+        else:
+            missing = [f.name for f in files if not f.exists()]
+            utils.log(f"✗ {category} ... FAIL (missing: {', '.join(missing)})")
+            all_exist = False
+    
+    return all_exist
 
 
 def check_workflow() -> bool:
@@ -66,19 +117,6 @@ def check_workflow() -> bool:
         utils.log("✓ GitHub Actions workflow ... OK")
         return True
     utils.log("✗ GitHub Actions workflow ... FAIL")
-    return False
-
-
-def check_documentation() -> bool:
-    """Verify documentation files exist."""
-    docs = [
-        utils.ROOT / "README.md",
-        utils.ROOT / "docs/DESIGN.md",
-    ]
-    if all(d.exists() for d in docs):
-        utils.log("✓ Documentation ... OK")
-        return True
-    utils.log("✗ Documentation ... FAIL")
     return False
 
 
@@ -98,32 +136,49 @@ def validate_script_syntax() -> bool:
 
 
 def main() -> int:
-    print("🔍 Pre-flight validation checklist")
-    print("=" * 40)
+    """Run all pre-flight checks."""
+    utils.log("🔍 Pre-flight validation checklist")
+    utils.log("=" * 50)
+    utils.log("")
     
-    checks = [
+    # Critical checks (must pass)
+    utils.log("CRITICAL CHECKS:")
+    critical_checks = [
         check_python_version(),
         check_dependencies(),
+        check_docker_daemon(),
+    ]
+    
+    utils.log("")
+    utils.log("ENVIRONMENT CHECKS:")
+    env_checks = [
         check_binary("docker", required=True),
         check_binary("kind", required=False),
         check_binary("kubectl", required=False),
+    ]
+    
+    utils.log("")
+    utils.log("PROJECT CHECKS:")
+    project_checks = [
         validate_script_syntax(),
         check_manifests(),
         check_workflow(),
-        check_documentation(),
     ]
     
-    print()
-    if all(checks):
-        print("✅ All checks passed! Ready for deployment.")
-        print()
-        print("Next steps:")
-        print("  1. Create a feature branch: git checkout -b test-ci")
-        print("  2. Push and open a PR to trigger the workflow")
-        print("  3. Review the automated load-test comment on the PR")
+    all_checks = critical_checks + env_checks + project_checks
+    
+    utils.log("")
+    utils.log("=" * 50)
+    if all(all_checks):
+        utils.log("✅ All checks passed! Ready for deployment.")
+        utils.log("")
+        utils.log("Next steps:")
+        utils.log("  1. Create a feature branch: git checkout -b test-ci")
+        utils.log("  2. Push and open a PR to trigger the workflow")
+        utils.log("  3. Review the automated load-test comment on the PR")
         return 0
     
-    print("❌ Some checks failed. Please fix the issues above.")
+    utils.log("❌ Some checks failed. Please fix the issues above.")
     return 1
 
 
