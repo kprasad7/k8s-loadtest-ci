@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import time
 from typing import Dict, List, Optional
-from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 
@@ -22,6 +23,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--duration", type=int, default=60, help="Monitoring duration in seconds")
     parser.add_argument("--interval", type=int, default=10, help="Scrape interval in seconds")
     return parser.parse_args()
+
+
+def is_prometheus_ready(url: str) -> bool:
+    try:
+        response = requests.get(f"{url}/-/healthy", timeout=5)
+        response.raise_for_status()
+        return True
+    except requests.RequestException:
+        return False
 
 
 def query_prometheus(url: str, query: str) -> Optional[Dict]:
@@ -158,53 +168,109 @@ def main() -> int:
     utils.ensure_artifacts_dir()
     
     # Check if Prometheus is accessible
+    state = utils.load_state()
+
+    port_forward_proc: Optional[subprocess.Popen[str]] = None
+
     try:
-        response = requests.get(f"{args.prometheus_url}/-/healthy", timeout=5)
-        response.raise_for_status()
-        utils.log("Prometheus is healthy and accessible")
-    except requests.RequestException as exc:
-        utils.log(f"Warning: Prometheus not accessible at {args.prometheus_url}: {exc}")
-        utils.log("Skipping resource monitoring - this is optional")
-        return 0
+        if is_prometheus_ready(args.prometheus_url):
+            utils.log("Prometheus is healthy and accessible")
+        else:
+            utils.log(
+                f"Prometheus not directly reachable at {args.prometheus_url}; attempting kubectl port-forward"
+            )
+            try:
+                port_forward_proc = start_port_forward(state, args.prometheus_url)
+            except (RuntimeError, utils.CommandError, FileNotFoundError) as exc:
+                utils.log(f"Failed to start port-forward: {exc}")
+                return 1
+            if not is_prometheus_ready(args.prometheus_url):
+                utils.log(
+                    "Failed to establish port-forward to Prometheus; skipping resource monitoring"
+                )
+                return 1
+            utils.log("Port-forward established; Prometheus is accessible")
     
-    # Collect metrics
-    samples = monitor_resources(args.prometheus_url, args.duration, args.interval)
+        # Collect metrics
+        samples = monitor_resources(args.prometheus_url, args.duration, args.interval)
     
-    if not samples:
-        utils.log("No metrics collected; check Prometheus configuration")
-        return 1
+        if not samples:
+            utils.log("No metrics collected; check Prometheus configuration")
+            return 1
     
-    # Compute statistics
-    stats = compute_statistics(samples)
+        # Compute statistics
+        stats = compute_statistics(samples)
     
-    # Save results
-    output = {
-        "samples": samples,
-        "statistics": stats,
-        "prometheus_url": args.prometheus_url,
-        "duration": args.duration,
-    }
-    
-    metrics_path = utils.ARTIFACTS / METRICS_FILE
-    metrics_path.write_text(json.dumps(output, indent=2))
-    utils.log(f"Resource metrics saved to {metrics_path}")
-    
-    # Generate markdown
-    markdown = format_markdown(stats)
-    md_path = utils.ARTIFACTS / "resource-metrics.md"
-    md_path.write_text(markdown)
-    utils.log("\n" + markdown)
-    
-    # Update state
-    utils.update_state({
-        "resource_metrics": {
-            "json": str(metrics_path),
-            "markdown": str(md_path),
+        # Save results
+        output = {
+            "samples": samples,
             "statistics": stats,
+            "prometheus_url": args.prometheus_url,
+            "duration": args.duration,
         }
-    })
     
-    return 0
+        metrics_path = utils.ARTIFACTS / METRICS_FILE
+        metrics_path.write_text(json.dumps(output, indent=2))
+        utils.log(f"Resource metrics saved to {metrics_path}")
+    
+        # Generate markdown
+        markdown = format_markdown(stats)
+        md_path = utils.ARTIFACTS / "resource-metrics.md"
+        md_path.write_text(markdown)
+        utils.log("\n" + markdown)
+    
+        # Update state
+        utils.update_state({
+            "resource_metrics": {
+                "json": str(metrics_path),
+                "markdown": str(md_path),
+                "statistics": stats,
+            }
+        })
+    
+        return 0
+    finally:
+        if port_forward_proc:
+            utils.log("Stopping Prometheus port-forward")
+            port_forward_proc.terminate()
+            try:
+                port_forward_proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                port_forward_proc.kill()
+
+
+def start_port_forward(state: Dict[str, object], prometheus_url: str) -> subprocess.Popen[str]:
+    """Start a kubectl port-forward to expose Prometheus locally."""
+    utils.ensure_binary("kubectl")
+    env = utils.build_kube_env(state)
+    parsed = urlparse(prometheus_url)
+    if parsed.hostname not in {"127.0.0.1", "localhost"}:
+        raise RuntimeError("Port-forward only supported for localhost targets")
+    local_port = parsed.port or 9090
+    command = (
+        "kubectl",
+        "port-forward",
+        "svc/prometheus",
+        f"{local_port}:9090",
+        "-n",
+        "monitoring",
+    )
+    utils.log("Starting kubectl port-forward for Prometheus")
+    proc = subprocess.Popen(
+        command,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        env=env,
+    )
+    start_time = time.time()
+    while time.time() - start_time < 15:
+        if proc.poll() is not None:
+            raise RuntimeError("kubectl port-forward exited unexpectedly")
+        if is_prometheus_ready(prometheus_url):
+            return proc
+        time.sleep(1)
+    raise RuntimeError("Timed out waiting for port-forward to become ready")
 
 
 if __name__ == "__main__":
