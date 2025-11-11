@@ -42,6 +42,23 @@ def main() -> int:
     utils.log("Installing ingress-nginx controller")
     utils.run_cmd(("kubectl", "apply", "-f", INGRESS_CONTROLLER_MANIFEST), env=env)
 
+    # Wait until the admission webhook is ready before applying ingress resources.
+    utils.log("Waiting for ingress-nginx controller webhook to become ready")
+    utils.run_cmd(
+        (
+            "kubectl",
+            "wait",
+            "--namespace",
+            "ingress-nginx",
+            "--for=condition=Ready",
+            "pod",
+            "-l",
+            "app.kubernetes.io/component=controller",
+            "--timeout=180s",
+        ),
+        env=env,
+    )
+
     for manifest in MANIFEST_FILES:
         full_path = utils.ROOT / manifest
         utils.log(f"Applying manifest {full_path}")
