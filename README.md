@@ -1,86 +1,669 @@
-# k8s-loadtest-ci
+# 🚀 Quick Start Guide
 
-Automation exercise that provisions a multi-node KinD cluster on each pull request, deploys echo services behind an NGINX ingress, executes an HTTP load test, and reports the outcome back to the GitHub PR thread.
+**Get up and running in 5 minutes.**
 
-## Repository layout
+## 1. One-Time Setup
 
-- `manifests/`
-  - `base/` – Kustomize base layer with deployment manifests
-  - `overlays/production/` – Production-specific resource adjustments
-  - `foo-deployment.yaml` / `bar-deployment.yaml` – deployments + services for the echo workloads with resource limits
-  - `ingress.yaml` – host-routed ingress targeting the echo services
-  - `prometheus.yaml` – Prometheus deployment for monitoring (stretch goal)
-- `scripts/`
-  - `create_cluster.py` – provisions a three-node KinD cluster and captures kubeconfig
-  - `deploy.py` – installs ingress-nginx, Prometheus, and applies the manifests
-  - `check_health.py` – waits for node readiness, ingress controller, deployments, and Prometheus health
-  - `load_test.py` – warms the endpoints, generates randomized traffic, and records metrics
-  - `monitor_resources.py` – captures CPU/memory/network utilization from Prometheus
-  - `post_comment.py` – publishes load-test and resource metrics to the PR
-  - `delete_cluster.py` – tears down the KinD cluster and removes local kubeconfig
-  - `validate.py` – validates environment dependencies and project structure
-  - `test.py` – runs unit and integration tests for pipeline components
-  - `utils.py` – shared logging/state/subprocess helpers across scripts
-- `docs/DESIGN.md` – design rationale and execution flow
-- `docs/INTERVIEW_PREP.md` – technical decision rationale and interview Q&A
-- `.github/workflows/ci.yml` – GitHub Actions workflow with validation, security scan, and monitoring stages
-- `requirements.txt` – Python dependencies (`requests`, `PyGithub`)
-- `artifacts/` – runtime output (kubeconfig, load-test reports, metrics); ignored by git
+```bash
+# Clone & install
+git clone https://github.com/kprasad7/k8s-loadtest-ci.git
+cd k8s-loadtest-ci
+python -m pip install -r requirements.txt
 
-## Local execution
+# Verify environment
+python scripts/validate.py
+```
 
-1. Install prerequisites: Docker, `kind`, `kubectl`, Python 3.11+.
-2. Install Python requirements: `pip install -r requirements.txt`.
-3. Run the pipeline scripts in order:
+Expected output:
+```
+✅ All checks passed! Ready for deployment.
+```
 
-   ```bash
-   python scripts/validate.py  # Pre-flight checks
-   python scripts/test.py      # Run test suite
-   python scripts/create_cluster.py
-   python scripts/deploy.py
-   python scripts/check_health.py
-   python scripts/load_test.py --requests 200
-   # Optionally post a comment when running against a PR clone with GITHUB_TOKEN configured
-   python scripts/post_comment.py
-   python scripts/delete_cluster.py
-   ```	 Tip: export `KUBECONFIG=$(pwd)/artifacts/kubeconfig` if you want to inspect the cluster manually between steps.
+## 2. Run the Full Pipeline Locally
 
-4. Review generated artifacts under `artifacts/` (JSON + Markdown load-test summaries, kubeconfig, pipeline state).
+```bash
+# Start (provisions cluster, deploys, tests, cleans up)
+python scripts/create_cluster.py && \
+python scripts/deploy.py && \
+python scripts/check_health.py && \
+python scripts/load_test.py && \
+python scripts/monitor_resources.py && \
+python scripts/delete_cluster.py
+```
 
-## CI workflow
+**Each script logs progress:**
+```
+[HH:MM:SS] Creating KinD cluster...
+[HH:MM:SS] ✓ Cluster ready
+[HH:MM:SS] Deploying workloads...
+[HH:MM:SS] ✓ All pods healthy
+...
+```
 
-- Triggered on every `pull_request` targeting `main`.
-- Installs Python deps and pins `kind` v0.22.0 and `kubectl` v1.29.2 on the GitHub runner.
-- **Validation**: Verifies environment dependencies and project structure.
-- **Testing**: Runs unit and integration tests for pipeline components.
-- **Infrastructure**: Creates cluster → deploys workloads → validates health.
-- **Load testing**: Executes randomized traffic and captures metrics.
-- **Reporting**: Posts results to PR as automated comment.
-- **Security**: Scans codebase with Trivy and uploads results to GitHub Security tab.
-- **Cleanup**: Tears down cluster and uploads artifacts (logs, metrics, security reports).
+## 3. Trigger CI via GitHub
 
-## Load testing & reporting
+```bash
+# Create & push a feature branch
+git checkout -b test/my-feature
+git push origin test/my-feature
 
-- Traffic generator uses Python `requests` to send randomized load across `foo.localhost` and `bar.localhost` via ingress-nginx.
-- Warm-up attempts precede measurement to avoid skewing the latency distribution.
-- Metrics cover latency percentiles (avg, p50/p90/p95/p99, max), requests-per-second, success ratio, and failure counts per host plus combined totals.
-- **Resource monitoring** (stretch goal): Prometheus captures CPU, memory, and network utilization during the load test.
-- Combined markdown summary (load test + resource metrics) and raw JSON payloads land in `artifacts/` and, in CI, on the PR discussion thread.
+# Open PR to main
+# → GitHub Actions runs automatically
+# → Comment appears with results in ~3 minutes
+```
 
-## Cleanup & failure handling
+## 4. Read the Results
 
-- Teardown script runs in an `always()` block to delete the KinD cluster even after failures.
-- Shared utilities standardise logging and surface detailed stdout/stderr for failing commands to aid triage.
+**PR Comment shows:**
+- 📊 Load test metrics (latency, throughput, success %)
+- 💾 Resource utilization (CPU, memory, network)
+- 🔒 Security scan findings
+- 📎 Artifact links (kubeconfig, JSON metrics)
 
-## Future enhancements
+---
 
-- ~~Layer on Prometheus/Grafana to attach utilisation snapshots alongside the load-test results~~ ✅ **Implemented**
-- ~~Replace ad-hoc manifests with Kustomize/Helm for better reuse across environments~~ ✅ **Kustomize base/overlays added**
-- ~~Add security scanning with Trivy~~ ✅ **Implemented**
-- Swap the bespoke load generator for a dedicated tool such as k6 or Vegeta for higher-throughput scenarios
-- Add Grafana dashboards for real-time visualization during load tests
-- Implement HorizontalPodAutoscaler (HPA) to test auto-scaling behavior
-- ~~Replace ad-hoc manifests with Kustomize/Helm for better reuse across environments~~ ✅ **Kustomize base/overlays added**
-- Swap the bespoke load generator for a dedicated tool such as k6 or Vegeta for higher-throughput scenarios
-- Add Grafana dashboards for real-time visualization during load tests
-- Implement HorizontalPodAutoscaler (HPA) to test auto-scaling behavior
+## Useful Commands
+
+| Task | Command |
+|------|---------|
+| Test environment | `python scripts/validate.py` |
+| Run tests | `python scripts/test.py` |
+| Create cluster only | `python scripts/create_cluster.py` |
+| Deploy only | `python scripts/deploy.py` |
+| Check health | `python scripts/check_health.py` |
+| Load test | `python scripts/load_test.py --requests 500` |
+| Monitor (60s) | `python scripts/monitor_resources.py --duration 60` |
+| View results | `cat artifacts/load-test-results.md` |
+| Access Prometheus | `kubectl port-forward -n monitoring svc/prometheus 9090:9090` |
+| View cluster logs | `kubectl logs -n echo deployment/echo-foo` |
+
+---
+
+**Next:** Read `README.md` for full documentation.
+
+
+
+
+# 🚀 Kubernetes Load Test CI Pipeline
+
+**GitHub Actions workflow** that automatically provisions a multi-node Kubernetes cluster, deploys load-balanced services, executes sophisticated load testing, monitors resource utilization with Prometheus, performs security scanning, and reports results back to your pull request—all in under 3 minutes.
+
+> 🎯 **One PR trigger. Full end-to-end infrastructure validation.** No manual intervention required.
+
+---
+
+## 📑 Quick Navigation
+
+- [What This Does](#-what-this-does)
+- [Architecture Overview](#-architecture-overview)
+- [File Structure](#-file-structure)
+- [Features at a Glance](#-features-at-a-glance)
+- [Getting Started](#-getting-started)
+- [How the CI Pipeline Works](#-how-the-ci-pipeline-works)
+- [Understanding the Reports](#-understanding-the-reports)
+- [Running Locally](#-running-locally)
+- [Troubleshooting](#-troubleshooting)
+- [Production Considerations](#-production-considerations)
+
+---
+
+## 🎯 What This Does
+
+Every time you open a pull request to `main`, this system automatically:
+
+1. **Provisions** a 3-node Kubernetes cluster (KinD)
+2. **Deploys** dual HTTP echo services behind an ingress
+3. **Routes** traffic via hostnames (`foo.localhost` and `bar.localhost`)
+4. **Executes** 200 randomized HTTP requests with full metrics capture
+5. **Collects** CPU, memory, and network stats from Prometheus
+6. **Scans** code for security vulnerabilities with Trivy
+7. **Posts** a beautiful summary comment to your PR
+8. **Cleans up** all resources automatically
+
+**Result:** A complete infrastructure lifecycle test, all validated and reported in one automated workflow.
+
+---
+
+## 🏗️ Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     GitHub Actions CI/CD                        │
+│                     (Triggered on PR)                           │
+└────────┬────────────────────────────────────────────────────────┘
+         │
+         ├─► 1. VALIDATE        Environment & dependencies ready?
+         │
+         ├─► 2. TEST            Unit & integration tests pass?
+         │
+         ├─► 3. SECURITY SCAN   Vulnerabilities detected?
+         │
+         ├─► 4. PROVISION       ┌─────────────────────────────────┐
+         │                       │    KinD Cluster (localhost)     │
+         │                       │  ┌────────────────────────────┐ │
+         │                       │  │   Control Plane (1 node)   │ │
+         │                       │  ├────────────────────────────┤ │
+         │                       │  │  Worker 1 │ Worker 2       │ │
+         │                       │  └────────────────────────────┘ │
+         │                       └─────────────────────────────────┘
+         │
+         ├─► 5. DEPLOY          ┌─────────────────────────────────┐
+         │                       │  • ingress-nginx controller     │
+         │                       │  • echo-foo service             │
+         │                       │  • echo-bar service             │
+         │                       │  • Prometheus monitoring        │
+         │                       └─────────────────────────────────┘
+         │
+         ├─► 6. HEALTH CHECK    All workloads healthy & ready?
+         │
+         ├─► 7. LOAD TEST       ┌─────────────────────────────────┐
+         │                       │  200 randomized HTTP requests   │
+         │                       │  • P50, P90, P95, P99 latency   │
+         │                       │  • Success rate & throughput    │
+         │                       │  • Per-host breakdown           │
+         │                       └─────────────────────────────────┘
+         │
+         ├─► 8. MONITOR         ┌─────────────────────────────────┐
+         │                       │  Prometheus metrics collection  │
+         │                       │  • CPU utilization              │
+         │                       │  • Memory consumption           │
+         │                       │  • Network I/O                  │
+         │                       └─────────────────────────────────┘
+         │
+         ├─► 9. REPORT          ✅ Beautiful PR comment posted
+         │                       📊 Load & resource metrics
+         │                       🔒 Security findings
+         │
+         └─► 10. CLEANUP        🧹 All resources destroyed
+                                 ✓ Guaranteed (even on failure)
+
+         ⏱️  Total time: ~2-3 minutes
+```
+
+---
+
+## 📂 File Structure
+
+```
+k8s-loadtest-ci/
+│
+├── 📄 README.md                              ← You are here
+├── 📄 requirements.txt                       ← Python dependencies
+├── 📄 IMPLEMENTATION_SUMMARY.md              ← Complete feature list
+│
+├── 📁 .github/workflows/
+│   └── ci.yml                                ← GitHub Actions workflow
+│
+├── 📁 docs/                                  ← Deep documentation
+│   ├── DESIGN.md                             ← Architecture decisions
+│   └── INTERVIEW_PREP.md                     ← Q&A talking points
+│
+├── 📁 manifests/                             ← Kubernetes definitions
+│   ├── foo-deployment.yaml                   ← Echo service #1
+│   ├── bar-deployment.yaml                   ← Echo service #2
+│   ├── ingress.yaml                          ← Host-based routing
+│   ├── prometheus.yaml                       ← Monitoring stack
+│   │
+│   ├── base/                                 ← Kustomize foundation
+│   │   └── kustomization.yaml
+│   │
+│   └── overlays/production/                  ← Environment patches
+│       └── kustomization.yaml
+│
+└── 📁 scripts/                               ← Orchestration scripts
+    ├── utils.py                              ← Shared utilities
+    ├── create_cluster.py                     ← KinD provisioning
+    ├── deploy.py                             ← Workload deployment
+    ├── check_health.py                       ← Readiness validation
+    ├── load_test.py                          ← Traffic generation
+    ├── monitor_resources.py                  ← Metrics collection
+    ├── post_comment.py                       ← PR automation
+    ├── delete_cluster.py                     ← Resource cleanup
+    ├── validate.py                           ← Environment checks
+    └── test.py                               ← Test suite
+```
+
+---
+
+## ✨ Features at a Glance
+
+| Feature | What It Does | Why It Matters |
+|---------|-------------|-----------------|
+| **Multi-node cluster** | 1 control-plane + 2 workers | Tests real distributed scenarios |
+| **Host-based routing** | `foo.localhost` → foo, `bar.localhost` → bar | Validates ingress configuration |
+| **Readiness checks** | Waits for all pods/ingress/webhooks | Prevents false negatives from timing issues |
+| **Percentile metrics** | p50, p90, p95, p99 latency | Shows real distribution, not just averages |
+| **Resource monitoring** | CPU, memory, network from Prometheus | Catches performance regressions early |
+| **Security scanning** | Trivy filesystem + dependency checks | Blocks vulnerable code pre-deployment |
+| **PR comments** | Markdown tables with results | Developers see results without leaving GitHub |
+| **Artifact storage** | JSON metrics + kubeconfig | Debug failures or re-run analysis |
+| **Cleanup guarantee** | `if: always()` ensures teardown | Prevents resource leaks in CI |
+| **Idempotent ops** | Safe to re-run without manual reset | CI-friendly, robust |
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+Install these locally (CI downloads them automatically):
+
+```bash
+# Required
+python3 --version           # 3.11+
+docker --version            # 24+
+git --version
+
+# Nice to have (optional for local testing)
+kind --version              # KinD for local cluster
+kubectl version --client    # Kubernetes CLI
+```
+
+### Quick Setup
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/kprasad7/k8s-loadtest-ci.git
+cd k8s-loadtest-ci
+
+# 2. Install Python dependencies
+python -m pip install -r requirements.txt
+
+# 3. Verify environment is ready
+python scripts/validate.py
+
+# 4. Create a test branch and push
+git checkout -b feat/test-ci
+git push origin feat/test-ci
+
+# 5. Open a PR to main
+# → GitHub Actions will run automatically
+# → Check the PR for the automated comment with results
+```
+
+---
+
+## 🔄 How the CI Pipeline Works
+
+### Stage 1: **Validate** (10s)
+```bash
+python scripts/validate.py
+```
+✅ Checks: Python version, Docker, kind, kubectl, script syntax, manifest validity, GitHub Actions YAML  
+❌ Fails fast if environment is incomplete
+
+### Stage 2: **Test** (5s)
+```bash
+python scripts/test.py
+```
+✅ Runs 5 automated tests:
+- State management (save/load JSON)
+- Command execution (subprocess handling)
+- Manifest validation (YAML structure)
+- Percentile calculation (statistics)
+- PR context discovery (GitHub integration)
+
+### Stage 3: **Security Scan** (20s)
+```bash
+trivy fs . --format sarif --output trivy-results.sarif
+```
+✅ Scans Python dependencies, manifests, configs  
+✅ Uploads SARIF report to GitHub Security tab  
+⚠️ Doesn't block PR (advisory only)
+
+### Stage 4: **Provision** (45s)
+```bash
+python scripts/create_cluster.py
+```
+✅ Creates KinD cluster with 3 nodes  
+✅ Extracts kubeconfig to `artifacts/kubeconfig`  
+✅ Waits 180s for cluster to stabilize
+
+**KinD config:**
+```yaml
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+  - role: worker
+  - role: worker
+```
+
+### Stage 5: **Deploy** (25s)
+```bash
+python scripts/deploy.py
+```
+✅ Installs ingress-nginx from official Helm chart  
+✅ Applies foo & bar deployments with resource limits  
+✅ Configures ingress for host-based routing  
+✅ Deploys Prometheus for metrics collection  
+⏳ Waits for admission webhooks before applying ingress
+
+### Stage 6: **Health Check** (10s)
+```bash
+python scripts/check_health.py
+```
+✅ Verifies:
+- All nodes `Ready`
+- Ingress controller pod running
+- Echo deployments rolled out successfully
+- Prometheus deployment ready
+- Services have endpoints
+
+**Logs example:**
+```
+[12:43:16] Waiting for nodes to become Ready
+[12:43:16] Waiting for ingress-nginx controller pod
+[12:43:20] Waiting for deployment echo/echo-foo
+[12:43:21] Prometheus is ready
+```
+
+### Stage 7: **Load Test** (5s)
+```bash
+python scripts/load_test.py \
+  --requests 200 \
+  --concurrency 20 \
+  --warm-up-retries 2
+```
+
+**What happens:**
+1. Warm-up request to each host (with retry)
+2. Send 100 requests to `foo.localhost` + 100 to `bar.localhost`
+3. Collect latency for each request
+4. Calculate percentiles (p50, p90, p95, p99)
+5. Count successes & failures
+6. Save results to JSON + Markdown
+
+**Sample output:**
+```
+### 🚦 Load-test summary
+| Host          | Requests | Success % | Avg (ms) | P90 (ms) | Req/s |
+|---------------|---------:|----------:|---------:|---------:|------:|
+| foo.localhost |      108 |     100 % |     1.41 |     1.54 | 378.7 |
+| bar.localhost |       92 |     100 % |     1.43 |     1.56 | 322.6 |
+```
+
+### Stage 8: **Monitor** (35s)
+```bash
+python scripts/monitor_resources.py \
+  --duration 30 \
+  --interval 5
+```
+
+**What it captures:**
+- CPU cores (from Prometheus `container_cpu_usage_seconds_total`)
+- Memory MB (from Prometheus `container_memory_working_set_bytes`)
+- Network RX/TX (from Prometheus `container_network_*_bytes_total`)
+- Pod replica count
+
+**Handles connectivity:** Auto-detects if Prometheus isn't on localhost:9090 and starts a `kubectl port-forward` tunnel
+
+### Stage 9: **Post Comment** (3s)
+```bash
+python scripts/post_comment.py
+```
+
+✅ Reads load-test results from JSON  
+✅ Reads resource metrics from JSON  
+✅ Formats as Markdown tables  
+✅ Posts to GitHub PR comment  
+✅ Includes artifact links
+
+**Example comment:**
+```markdown
+## ✅ Load Test Results
+
+### 🚦 Metrics
+| Host | Requests | Avg | P90 | Failures |
+|------|----------|-----|-----|----------|
+| foo.localhost | 108 | 1.41ms | 1.54ms | 0 |
+
+### 📊 Resource Utilization
+| Metric | Avg | Min | Max |
+|--------|-----|-----|-----|
+| Memory | 25.1MB | 12.1MB | 32.1MB |
+```
+
+### Stage 10: **Cleanup** (8s)
+```bash
+python scripts/delete_cluster.py
+```
+
+✅ Deletes KinD cluster  
+✅ Removes kubeconfig file  
+✅ **Runs even if previous steps failed** (`if: always()`)  
+✅ Uploads artifacts before deleting
+
+---
+
+## 📊 Understanding the Reports
+
+### Load Test Metrics Table
+
+| Column | Meaning | Interpretation |
+|--------|---------|-----------------|
+| **Requests** | Total HTTP calls sent to this host | Higher = more confident result |
+| **Success %** | Percentage of 2xx responses | Should be 100% for healthy service |
+| **Avg (ms)** | Mean latency across all requests | Lower is better; watch for increases |
+| **P90 (ms)** | 90th percentile latency | "Most users see this latency or better" |
+| **P95 (ms)** | 95th percentile latency | Upper bound for typical users |
+| **P99 (ms)** | 99th percentile latency | Tail latency; indicates outliers |
+| **Req/s** | Throughput: requests per second | How many requests/s the service handled |
+| **Failures** | Count of non-2xx or timeout responses | Should be 0 |
+
+**Example interpretation:**
+```
+foo.localhost: avg 1.41ms, p95 1.63ms → Latency is stable & predictable
+bar.localhost: 322 req/s → Service can handle ~300 concurrent users
+0 failures → No timeouts or errors
+```
+
+### Resource Utilization Table
+
+| Metric | Meaning | Healthy Range |
+|--------|---------|----------------|
+| **CPU (cores)** | Average CPU used during load test | 0.0–0.5 cores per pod (depending on workload) |
+| **Memory (MB)** | Average memory consumed | 20–50 MB typical for echo service |
+| **Network RX (MB/s)** | Incoming bandwidth | Usually low for HTTP echo |
+| **Network TX (MB/s)** | Outgoing bandwidth | Usually low for HTTP echo |
+| **Running pods** | Number of replicas active | Should match deployment replicas |
+
+**What to watch for:**
+- Memory creeping up → potential memory leak
+- CPU spiking → performance issue or inefficient code
+- No pods running → deployment failed silently
+- Network RX/TX near zero → might indicate packet loss
+
+---
+
+## 💻 Running Locally
+
+### Run Everything (Full Pipeline)
+
+```bash
+# Create cluster
+python scripts/create_cluster.py
+
+# Deploy workloads
+python scripts/deploy.py
+
+# Wait for health
+python scripts/check_health.py
+
+# Run load test
+python scripts/load_test.py --requests 200 --concurrency 20
+
+# Collect metrics
+python scripts/monitor_resources.py --duration 60 --interval 5
+
+# View results
+cat artifacts/load-test-results.md
+cat artifacts/resource-metrics.md
+
+# Cleanup
+python scripts/delete_cluster.py
+```
+
+### Run Just Tests
+
+```bash
+python scripts/test.py
+```
+
+Output:
+```
+🧪 Running test suite
+========================================
+[12:42:03] Running state management tests...
+[12:42:03]   ✓ State management tests passed
+[12:42:03] Running command execution tests...
+[12:42:03]   ✓ Command execution tests passed
+...
+✅ All 5 tests passed!
+```
+
+### Run Just Health Checks
+
+```bash
+python scripts/check_health.py
+```
+
+### Increase Load for Stress Testing
+
+```bash
+python scripts/load_test.py \
+  --requests 500 \
+  --concurrency 50 \
+  --timeout 10
+```
+
+### Access Prometheus UI (Local)
+
+After deployment:
+```bash
+kubectl port-forward -n monitoring svc/prometheus 9090:9090
+# Then open: http://localhost:9090
+```
+
+---
+
+## 🔧 Troubleshooting
+
+### ❌ "connection refused" on ingress apply
+
+**Symptom:**
+```
+Error from server (InternalError): failed calling webhook
+"validate.nginx.ingress.kubernetes.io": failed to call webhook
+Post "https://ingress-nginx-controller-admission..."
+```
+
+**Root cause:** Admission webhook not yet ready
+
+**Solution:** Already handled! `deploy.py` waits for webhook jobs to complete. If it fails locally, ensure you ran `check_health.py` first.
+
+---
+
+### ❌ Prometheus metrics all show zero
+
+**Symptom:**
+```
+CPU (cores) | 0.000 | 0.0 | 0.0
+Memory (MB) | 0.0 | 0.0 | 0.0
+```
+
+**Root cause:** Prometheus scrape not collecting cadvisor metrics, or sampling window too short
+
+**Solution:** 
+```bash
+# Increase monitoring duration
+python scripts/monitor_resources.py --duration 60 --interval 5
+
+# Verify Prometheus has data
+kubectl port-forward -n monitoring svc/prometheus 9090:9090
+# Visit http://localhost:9090/graph
+# Query: container_memory_working_set_bytes
+```
+
+---
+
+### ❌ PR comment fails to post
+
+**Symptom:**
+```
+Error: graphql error: Resource not accessible by integration
+```
+
+**Root cause:** GitHub token missing `pull-requests: write` permission
+
+**Solution:** Workflow already sets correct permissions. If running in a fork, you may need to approve the workflow in Settings → Actions.
+
+---
+
+### ❌ Trivy scan fails
+
+**Symptom:**
+```
+Error: Path does not exist: trivy-results.sarif
+```
+
+**Root cause:** Trivy didn't generate SARIF (or network issue downloading DB)
+
+**Solution:** Already handled! Workflow only uploads SARIF if it exists. Trivy output is logged in the Actions tab.
+
+---
+
+### ❌ KinD cluster times out
+
+**Symptom:**
+```
+Timed out waiting for nodes to be ready
+```
+
+**Root cause:** Runner CPU/memory constrained, or Docker daemon issue
+
+**Solution:**
+```bash
+# Check Docker status
+docker ps
+
+# Manually delete stale cluster
+kind delete cluster --name ci-loadtest
+
+# Re-run
+python scripts/create_cluster.py
+```
+
+---
+
+## 🏢 Production Considerations
+
+### Resource Management
+- ✅ All pods have CPU/memory requests & limits
+- ✅ Prevents "noisy neighbor" interference
+- ✅ KinD uses minimal resources (~2 GB)
+
+### Security
+- ✅ Trivy scans for vulnerabilities
+- ✅ Prometheus RBAC restricted to monitoring namespace
+- ✅ No hardcoded secrets; uses GitHub Actions token
+- ⏳ Future: GitHub OpenID Connect + HashiCorp Vault
+
+### Observability
+- ✅ Structured logging in all scripts
+- ✅ Timestamps on every action
+- ✅ Error messages include context
+- ✅ Artifacts uploaded for post-mortem analysis
+
+### Reliability
+- ✅ Retries on transient failures (HTTP 5xx, timeouts)
+- ✅ Health checks before proceeding to next stage
+- ✅ Cleanup guaranteed with `if: always()`
+- ✅ Idempotent operations (safe to re-run)
+
+### Scalability
+- Kustomize overlays support multiple environments
+- Modular scripts allow component swaps (e.g., k6, Grafana)
+- Prometheus foundation enables HPA, alerting, dashboards
+- Easily extend with additional load profiles or metrics
+
