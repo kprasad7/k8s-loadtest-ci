@@ -90,15 +90,6 @@ python3 scripts/delete_cluster.py
 [12:44:06] Deleting KinD cluster
 [12:44:10] ✓ Cleanup complete
 ```
-
-**Results saved to:**
-- `artifacts/load-test-results.md` ← Load metrics (human-readable)
-- `artifacts/load-test-results.json` ← Load metrics (programmatic)
-- `artifacts/resource-metrics.md` ← Resource utilization
-- `artifacts/resource-metrics.json` ← Resource data
-
----
-
 ## 3️⃣ Trigger CI via GitHub (The Main Flow)
 
 ### Option A: Via Git CLI
