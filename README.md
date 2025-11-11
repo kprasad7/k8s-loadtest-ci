@@ -2,86 +2,142 @@
 
 **Get up and running in 5 minutes.**
 
-## 1. One-Time Setup
+---
+
+## 📋 Prerequisites
+
+Before you start, ensure your system has:
+
+| Requirement | Minimum Version | Check Command | Install |
+|-------------|-----------------|---------------|---------|
+| **Python** | 3.11+ | `python3 --version` | `apt install python3.11` |
+| **Docker** | 24+ | `docker --version` | `apt install docker.io` |
+| **Git** | 2.40+ | `git --version` | `apt install git` |
+| **curl** | Any | `curl --version` | `apt install curl` |
+| **pip** | Latest | `pip --version` | `python3 -m pip install --upgrade pip` |
+
+### Optional (for local testing only)
+| Tool | Purpose | Check | Install |
+|------|---------|-------|---------|
+| **kind** | Local KinD cluster | `kind --version` | `curl -Lo kind https://kind.sigs.k8s.io/dl/v0.22.0/kind-linux-amd64 && chmod +x kind && sudo mv kind /usr/local/bin/` |
+| **kubectl** | K8s CLI | `kubectl version --client` | `curl -Lo kubectl https://dl.k8s.io/release/v1.29.2/bin/linux/amd64/kubectl && chmod +x kubectl && sudo mv kubectl /usr/local/bin/` |
+
+### Quick Prereq Check
 
 ```bash
-# Clone & install
+# Run this to verify everything is installed
+python -c "import sys; assert sys.version_info >= (3,11), 'Python 3.11+ required'"
+docker ps > /dev/null || echo "⚠️  Docker not running; start it with: sudo systemctl start docker"
+git --version > /dev/null && echo "✓ Git ready" || echo "✗ Git missing"
+```
+
+---
+
+## 1️⃣ One-Time Setup
+
+```bash
+# Clone the repository
 git clone https://github.com/kprasad7/k8s-loadtest-ci.git
 cd k8s-loadtest-ci
-python -m pip install -r requirements.txt
 
-# Verify environment
-python scripts/validate.py
+# Install Python dependencies
+python3 -m pip install --upgrade pip
+python3 -m pip install -r requirements.txt
+
+# Verify environment is ready
+python3 scripts/validate.py
 ```
 
-Expected output:
+**Expected output:**
 ```
+🔍 Pre-flight validation checklist
+========================================
+[HH:MM:SS] ✓ Python 3.11+ ... OK
+[HH:MM:SS] ✓ Python dependencies ... OK
+[HH:MM:SS] ✓ docker ... OK
+[HH:MM:SS] ✓ Script syntax ... OK
+[HH:MM:SS] ✓ Manifest files ... OK
+[HH:MM:SS] ✓ Documentation ... OK
+
 ✅ All checks passed! Ready for deployment.
 ```
 
-## 2. Run the Full Pipeline Locally
+---
+
+## 2️⃣ Run the Full Pipeline Locally
 
 ```bash
-# Start (provisions cluster, deploys, tests, cleans up)
-python scripts/create_cluster.py && \
-python scripts/deploy.py && \
-python scripts/check_health.py && \
-python scripts/load_test.py && \
-python scripts/monitor_resources.py && \
-python scripts/delete_cluster.py
+# Execute the complete end-to-end pipeline
+python3 scripts/create_cluster.py && \
+python3 scripts/deploy.py && \
+python3 scripts/check_health.py && \
+python3 scripts/load_test.py && \
+python3 scripts/monitor_resources.py && \
+python3 scripts/delete_cluster.py
 ```
 
-**Each script logs progress:**
+**What happens:**
 ```
-[HH:MM:SS] Creating KinD cluster...
-[HH:MM:SS] ✓ Cluster ready
-[HH:MM:SS] Deploying workloads...
-[HH:MM:SS] ✓ All pods healthy
-...
+[12:42:03] Creating KinD cluster 'ci-loadtest'
+[12:42:49] ✓ Cluster ready (3 nodes)
+[12:42:49] Installing ingress-nginx controller
+[12:42:50] Deploying echo-foo and echo-bar
+[12:43:15] ✓ All deployments ready
+[12:43:21] Sending 200 load test requests
+[12:43:26] ✓ Load test complete (100% success)
+[12:43:26] Collecting resource metrics from Prometheus
+[12:43:57] ✓ Metrics saved
+[12:44:06] Deleting KinD cluster
+[12:44:10] ✓ Cleanup complete
 ```
 
-## 3. Trigger CI via GitHub
+**Results saved to:**
+- `artifacts/load-test-results.md` ← Load metrics (human-readable)
+- `artifacts/load-test-results.json` ← Load metrics (programmatic)
+- `artifacts/resource-metrics.md` ← Resource utilization
+- `artifacts/resource-metrics.json` ← Resource data
 
+---
+
+## 3️⃣ Trigger CI via GitHub (The Main Flow)
+
+### Option A: Via Git CLI
 ```bash
-# Create & push a feature branch
+# Create feature branch
 git checkout -b test/my-feature
+
+# Make a small change (e.g., update README)
+echo "# Test PR" >> README.md
+
+# Commit and push
+git add .
+git commit -m "test: trigger CI workflow"
 git push origin test/my-feature
 
-# Open PR to main
-# → GitHub Actions runs automatically
-# → Comment appears with results in ~3 minutes
+# Open PR (CLI)
+gh pr create --base main --head test/my-feature --title "Test CI" --body "Triggering automated load test"
 ```
 
-## 4. Read the Results
+### Option B: Via GitHub Web UI
+1. Push your branch: `git push origin test/my-feature`
+2. Go to https://github.com/kprasad7/k8s-loadtest-ci
+3. Click "Compare & pull request"
+4. Create PR targeting `main`
 
-**PR Comment shows:**
-- 📊 Load test metrics (latency, throughput, success %)
-- 💾 Resource utilization (CPU, memory, network)
-- 🔒 Security scan findings
-- 📎 Artifact links (kubeconfig, JSON metrics)
+### What Happens Automatically
+✅ GitHub Actions triggered  
+✅ Environment validated  
+✅ Tests run  
+✅ Security scan executed  
+✅ KinD cluster provisioned  
+✅ Workloads deployed  
+✅ Health checks pass  
+✅ Load test executed  
+✅ Resource metrics collected  
+✅ Results posted to PR comment  
+✅ Resources cleaned up  
 
----
-
-## Useful Commands
-
-| Task | Command |
-|------|---------|
-| Test environment | `python scripts/validate.py` |
-| Run tests | `python scripts/test.py` |
-| Create cluster only | `python scripts/create_cluster.py` |
-| Deploy only | `python scripts/deploy.py` |
-| Check health | `python scripts/check_health.py` |
-| Load test | `python scripts/load_test.py --requests 500` |
-| Monitor (60s) | `python scripts/monitor_resources.py --duration 60` |
-| View results | `cat artifacts/load-test-results.md` |
-| Access Prometheus | `kubectl port-forward -n monitoring svc/prometheus 9090:9090` |
-| View cluster logs | `kubectl logs -n echo deployment/echo-foo` |
-
----
-
-**Next:** Read `README.md` for full documentation.
-
-
+**Total time: ~3 minutes**
 
 
 # 🚀 Kubernetes Load Test CI Pipeline
