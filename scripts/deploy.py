@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import time
 from pathlib import Path
 
 import utils
@@ -24,6 +25,63 @@ MANIFEST_FILES = [
 ]
 
 
+def wait_until_job_exists(job: str, env) -> None:
+    """Poll until the specified job is created before waiting on completion."""
+    deadline = time.time() + 120
+    while time.time() < deadline:
+        result = utils.run_cmd(
+            (
+                "kubectl",
+                "get",
+                "job",
+                job,
+                "--namespace",
+                "ingress-nginx",
+            ),
+            env=env,
+            check=False,
+        )
+        if result.returncode == 0:
+            return
+        time.sleep(3)
+    raise RuntimeError(f"Timed out waiting for job {job} to be created")
+
+
+def wait_for_ingress_ready(env) -> None:
+    """Ensure ingress-nginx controller and admission webhook are ready."""
+    utils.log("Waiting for ingress-nginx controller pods to become Ready")
+    utils.run_cmd(
+        (
+            "kubectl",
+            "wait",
+            "--namespace",
+            "ingress-nginx",
+            "--for=condition=Ready",
+            "pod",
+            "-l",
+            "app.kubernetes.io/component=controller",
+            "--timeout=180s",
+        ),
+        env=env,
+    )
+
+    utils.log("Ensuring ingress-nginx admission webhook jobs have completed")
+    for job in ("ingress-nginx-admission-create", "ingress-nginx-admission-patch"):
+        wait_until_job_exists(job, env)
+        utils.run_cmd(
+            (
+                "kubectl",
+                "wait",
+                "--namespace",
+                "ingress-nginx",
+                "--for=condition=complete",
+                f"job/{job}",
+                "--timeout=120s",
+            ),
+            env=env,
+        )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Deploy workloads onto KinD")
     parser.add_argument("--namespace", default="echo")
@@ -41,6 +99,8 @@ def main() -> int:
 
     utils.log("Installing ingress-nginx controller")
     utils.run_cmd(("kubectl", "apply", "-f", INGRESS_CONTROLLER_MANIFEST), env=env)
+
+    wait_for_ingress_ready(env)
 
     for manifest in MANIFEST_FILES:
         full_path = utils.ROOT / manifest
