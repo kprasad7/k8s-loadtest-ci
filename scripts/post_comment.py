@@ -57,6 +57,14 @@ def main() -> int:
     # Combine load test and resource metrics
     body_parts = [markdown_path.read_text()]
     
+    # Add Cypress test results if available
+    cypress_state = state.get("cypress_tests")
+    if cypress_state:
+        cypress_md_path = Path(cypress_state.get("markdown", ""))
+        if cypress_md_path.exists():
+            body_parts.append("\n" + cypress_md_path.read_text())
+            utils.log("Including Cypress E2E test results in comment")
+    
     # Add resource metrics if available
     resource_state = state.get("resource_metrics")
     if resource_state:
