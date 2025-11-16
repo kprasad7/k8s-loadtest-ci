@@ -42,6 +42,14 @@ jobs:
           chmod +x kubectl
           sudo mv kubectl /usr/local/bin/kubectl
 
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Cypress
+        run: npm install -g cypress
+
       - name: Validate environment
         run: python scripts/validate.py
 
@@ -73,6 +81,11 @@ jobs:
 
       - name: Check workload health
         run: python scripts/check_health.py
+
+      - name: Run Cypress E2E tests
+        id: cypress
+        run: python scripts/run_cypress_tests.py
+        continue-on-error: true
 
       - name: Run load test
         run: python scripts/load_test.py
